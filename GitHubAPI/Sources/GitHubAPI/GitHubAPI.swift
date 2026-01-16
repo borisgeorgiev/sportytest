@@ -50,6 +50,28 @@ public actor GitHubAPI {
         decoder.keyDecodingStrategy = .convertFromSnakeCase
         return try decoder.decode([GitHubMinimalRepository].self, from: data)
     }
+    
+    /// Retrieves the repositories for a given user.
+    ///
+    /// - parameter user: The name of the user to retrieve repositories for.
+    /// - returns: An array of `GitHubMinimalRepository` objects representing the repositories for
+    ///   the provided organisation.
+    public func repositoriesForUser(_ user: String) async throws -> [GitHubMinimalRepository] {
+        ///   https://api.github.com/users/<USER-NAME>/repos
+        let url = baseURL.appendingPathComponent("users/\(user)/repos")
+        var request = URLRequest(url: url)
+        request.setValue("application/vnd.github.v3+json", forHTTPHeaderField: "Accept")
+        request.setValue("2022-11-28", forHTTPHeaderField: "X-GitHub-Api-Version")
+
+        if let authorisationToken {
+            request.setValue("Bearer \(authorisationToken)", forHTTPHeaderField: "Authorization")
+        }
+
+        let (data, _) = try await urlSession.data(for: request)
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        return try decoder.decode([GitHubMinimalRepository].self, from: data)
+    }
 
     /// Retrieves a specific repository by its full name. The full name should be a value returned
     /// by the GitHub API and is in the form `<owner>/<repository>`.

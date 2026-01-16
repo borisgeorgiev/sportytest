@@ -6,17 +6,41 @@ import UIKit
 
 /// A view controller that displays a list of GitHub repositories for the "swiftlang" organization.
 final class RepositoriesViewController: UITableViewController {
+    
+    private enum RepositoryMode: Codable {
+        case user(String)
+        case organization(String)
+    }
+    
+    private enum Constants {
+        static let mode = "mode"
+    }
+    
     private let gitHubAPI: GitHubAPI
     private let mockLiveServer: MockLiveServer
     private var repositories: [GitHubMinimalRepository] = []
+    
+    private var mode: RepositoryMode {
+        get {
+            if let data = UserDefaults.standard.data(forKey: Constants.mode),
+               let mode = try? JSONDecoder().decode(RepositoryMode.self, from: data) {
+                return mode
+            }
+            
+            return .organization("swiftlang")
+        }
+        set {
+            if let data = try? JSONEncoder().encode(newValue) {
+                UserDefaults.standard.set(data, forKey: Constants.mode)
+            }
+        }
+    }
 
     init(gitHubAPI: GitHubAPI, mockLiveServer: MockLiveServer) {
         self.gitHubAPI = gitHubAPI
         self.mockLiveServer = mockLiveServer
 
         super.init(style: .insetGrouped)
-
-        title = "swiftlang"
     }
 
     @available(*, unavailable)
@@ -29,10 +53,17 @@ final class RepositoriesViewController: UITableViewController {
 
         tableView.register(RepositoryTableViewCell.self, forCellReuseIdentifier: "RepositoryCell")
         
-        navigationItem.rightBarButtonItem = UIBarButtonItem(image: UIImage(systemName: "key.icloud.fill"),
-                                                            style: .plain,
-                                                            target: self,
-                                                            action: #selector(setTokenTapped))
+        let openRepositoryButton = UIBarButtonItem(image: UIImage(systemName: "magnifyingglass.circle.fill"),
+                                            style: .plain,
+                                            target: self,
+                                            action: #selector(openRepositoryTapped))
+        
+        let setTokenButton = UIBarButtonItem(image: UIImage(systemName: "key.icloud.fill"),
+                                       style: .plain,
+                                       target: self,
+                                       action: #selector(setTokenTapped))
+        
+        navigationItem.rightBarButtonItems = [setTokenButton, openRepositoryButton]
 
         Task {
             await loadRepositories()
@@ -69,8 +100,14 @@ final class RepositoriesViewController: UITableViewController {
 
     private func loadRepositories() async {
         do {
-            let api = GitHubAPI()
-            repositories = try await api.repositoriesForOrganisation("swiftlang")
+            switch mode {
+            case .user(let username):
+                repositories = try await gitHubAPI.repositoriesForUser(username)
+                title = username
+            case .organization(let org):
+                repositories = try await gitHubAPI.repositoriesForOrganisation(org)
+                title = org
+            }
             tableView.reloadData()
         } catch {
             print("Error loading repositories: \(error)")
@@ -120,6 +157,46 @@ final class RepositoriesViewController: UITableViewController {
         } catch {
             // TODO: Error handling
             print("error setting token: \(error.localizedDescription)")
+        }
+    }
+    
+    @objc private func openRepositoryTapped() {
+        let alert = UIAlertController(title: "Open Repositories",
+                                      message: "Enter name.",
+                                      preferredStyle: .alert)
+
+        alert.addTextField { textField in
+            textField.autocapitalizationType = .none
+            textField.autocorrectionType = .no
+        }
+
+        let openUserRepoAction = UIAlertAction(title: "User Repositories", style: .default) { [weak self, weak alert] _ in
+            if let textField = alert?.textFields?.first,
+               let user = textField.text {
+                self?.updateMode(.user(user))
+            }
+        }
+        
+        let openOrgRepoAction = UIAlertAction(title: "Organization Repositories", style: .default) { [weak self, weak alert] _ in
+            if let textField = alert?.textFields?.first,
+               let org = textField.text {
+                self?.updateMode(.organization(org))
+            }
+        }
+
+        let cancelAction = UIAlertAction(title: "Cancel", style: .cancel)
+        
+        alert.addAction(openUserRepoAction)
+        alert.addAction(openOrgRepoAction)
+        alert.addAction(cancelAction)
+
+        present(alert, animated: true)
+    }
+    
+    private func updateMode(_ mode: RepositoryMode) {
+        self.mode = mode
+        Task {
+            await loadRepositories()
         }
     }
 }
