@@ -28,6 +28,7 @@ final class RepositoriesViewController: UITableViewController {
     private let gitHubAPI: GitHubAPI
     private let mockLiveServer: MockLiveServer
     private var repositories: [GitHubMinimalRepository] = []
+    private var currentLoadingTask: Task<Void, Never>?
     
     private var mode: RepositoryMode {
         get {
@@ -73,10 +74,13 @@ final class RepositoriesViewController: UITableViewController {
                                        action: #selector(setTokenTapped))
         
         navigationItem.rightBarButtonItems = [setTokenButton, openRepositoryButton]
+        
+        let refreshControl = UIRefreshControl()
+        refreshControl.addTarget(self, action: #selector(refreshRepositories), for: .valueChanged)
+        refreshControl.attributedTitle = NSAttributedString(string: "Refreshing")
+        self.refreshControl = refreshControl
 
-        Task {
-            await loadRepositories()
-        }
+        refreshRepositories()
     }
 
     override func numberOfSections(in tableView: UITableView) -> Int {
@@ -106,24 +110,44 @@ final class RepositoriesViewController: UITableViewController {
         )
         show(viewController, sender: self)
     }
-
-    private func loadRepositories() async {
-        // TODO: loading view while the request is executing
-        do {
-            switch mode {
-            case .user(let username):
-                repositories = try await gitHubAPI.repositoriesForUser(username)
-            case .organization(let org):
-                repositories = try await gitHubAPI.repositoriesForOrganisation(org)
-            }
-        } catch {
-            // TODO: Error handling and empty state (alert, empty data view)
-            print("Error loading repositories: \(error)")
-            repositories = []
-        }
+    
+    @objc private func refreshRepositories() {
+        currentLoadingTask?.cancel()
         
-        title = mode.name
-        tableView.reloadData()
+        refreshControl?.beginRefreshing()
+        
+        currentLoadingTask = Task { @MainActor [weak self] in
+            guard let self else {
+                return
+            }
+            
+            let repositories: [GitHubMinimalRepository]
+            // TODO: show loading indicator
+            do {
+                switch mode {
+                case .user(let username):
+                    repositories = try await gitHubAPI.repositoriesForUser(username)
+                case .organization(let org):
+                    repositories = try await gitHubAPI.repositoriesForOrganisation(org)
+                }
+                
+                if Task.isCancelled {
+                    return
+                }
+            } catch {
+                // TODO: Error handling and empty state (alert, empty data view)
+                print("Error loading repositories: \(error)")
+                repositories = []
+            }
+            
+            // TODO: hide loading indicator
+            self.repositories = repositories
+            
+            title = mode.name
+            tableView.reloadData()
+            
+            refreshControl?.endRefreshing()
+        }
     }
     
     @objc private func setTokenTapped() {
@@ -164,7 +188,7 @@ final class RepositoriesViewController: UITableViewController {
             // Refresh the UI
             Task { @MainActor in
                 await gitHubAPI.updateAuthorisationToken(token)
-                await loadRepositories()
+                refreshRepositories()
             }
         } catch {
             // TODO: Error handling
@@ -207,8 +231,6 @@ final class RepositoriesViewController: UITableViewController {
     
     private func updateMode(_ mode: RepositoryMode) {
         self.mode = mode
-        Task {
-            await loadRepositories()
-        }
+        refreshRepositories()
     }
 }
