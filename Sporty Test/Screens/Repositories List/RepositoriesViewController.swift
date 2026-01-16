@@ -10,6 +10,15 @@ final class RepositoriesViewController: UITableViewController {
     private enum RepositoryMode: Codable {
         case user(String)
         case organization(String)
+        
+        var name: String {
+            switch self {
+            case .user(let name):
+                return name
+            case .organization(let name):
+                return name
+            }
+        }
     }
     
     private enum Constants {
@@ -99,19 +108,22 @@ final class RepositoriesViewController: UITableViewController {
     }
 
     private func loadRepositories() async {
+        // TODO: loading view while the request is executing
         do {
             switch mode {
             case .user(let username):
                 repositories = try await gitHubAPI.repositoriesForUser(username)
-                title = username
             case .organization(let org):
                 repositories = try await gitHubAPI.repositoriesForOrganisation(org)
-                title = org
             }
-            tableView.reloadData()
         } catch {
+            // TODO: Error handling and empty state (alert, empty data view)
             print("Error loading repositories: \(error)")
+            repositories = []
         }
+        
+        title = mode.name
+        tableView.reloadData()
     }
     
     @objc private func setTokenTapped() {
