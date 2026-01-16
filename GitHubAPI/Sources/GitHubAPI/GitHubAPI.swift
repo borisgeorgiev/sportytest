@@ -4,9 +4,9 @@ import Foundation
 ///
 /// You may choose to add new functions here if you would like to access new endpoints. Don't worry
 /// about improving this type (e.g. removing duplication); just add what you need.
-public struct GitHubAPI: Sendable {
+public actor GitHubAPI {
     private let baseURL: URL
-    private let authorisationToken: String?
+    private var authorisationToken: String?
     private let urlSession: URLSession
 
     /// Creates a new object for interacting with the GitHub API.
@@ -22,6 +22,12 @@ public struct GitHubAPI: Sendable {
         self.baseURL = baseURL
         self.authorisationToken = authorisationToken
         self.urlSession = urlSession
+    }
+    
+    /// Updates the authorization token used for requests
+    /// - parameter token: The token to set.
+    public func updateAuthorisationToken(_ token: String?) {
+        self.authorisationToken = token
     }
 
     /// Retrieves the repositories for a given organisation.

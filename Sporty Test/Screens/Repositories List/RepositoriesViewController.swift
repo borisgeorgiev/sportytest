@@ -103,12 +103,20 @@ final class RepositoriesViewController: UITableViewController {
     
     private func updateToken(_ value: String?) {
         do {
-            if value?.isEmpty == false {
-                try KeychainHelper.shared.set(value!, forKey: KeychainHelper.Keys.authToken)
+            // Clear the token when field is empty
+            let token = value?.isEmpty == false ? value! : nil
+            if token != nil {
+                try KeychainHelper.shared.set(token!, forKey: KeychainHelper.Keys.authToken)
             } else {
                 try KeychainHelper.shared.delete(forKey: KeychainHelper.Keys.authToken)
             }
             print("token set")
+            
+            // Refresh the UI
+            Task { @MainActor in
+                await gitHubAPI.updateAuthorisationToken(token)
+                await loadRepositories()
+            }
         } catch {
             // TODO: Error handling
             print("error setting token: \(error.localizedDescription)")
