@@ -28,6 +28,11 @@ final class RepositoriesViewController: UITableViewController {
         super.viewDidLoad()
 
         tableView.register(RepositoryTableViewCell.self, forCellReuseIdentifier: "RepositoryCell")
+        
+        navigationItem.rightBarButtonItem = UIBarButtonItem(image: UIImage(systemName: "key.icloud.fill"),
+                                                            style: .plain,
+                                                            target: self,
+                                                            action: #selector(setTokenTapped))
 
         Task {
             await loadRepositories()
@@ -69,6 +74,44 @@ final class RepositoriesViewController: UITableViewController {
             tableView.reloadData()
         } catch {
             print("Error loading repositories: \(error)")
+        }
+    }
+    
+    @objc private func setTokenTapped() {
+        let alert = UIAlertController(title: "Set authorization token",
+                                      message: "Enter token.",
+                                      preferredStyle: .alert)
+
+        alert.addTextField { textField in
+            textField.autocapitalizationType = .none
+            textField.autocorrectionType = .no
+        }
+
+        let setAction = UIAlertAction(title: "Set", style: .default) { [weak self, weak alert] _ in
+            if let textField = alert?.textFields?.first {
+                self?.updateToken(textField.text)
+            }
+        }
+
+        let cancelAction = UIAlertAction(title: "Cancel", style: .cancel)
+        
+        alert.addAction(setAction)
+        alert.addAction(cancelAction)
+
+        present(alert, animated: true)
+    }
+    
+    private func updateToken(_ value: String?) {
+        do {
+            if value?.isEmpty == false {
+                try KeychainHelper.shared.set(value!, forKey: KeychainHelper.Keys.authToken)
+            } else {
+                try KeychainHelper.shared.delete(forKey: KeychainHelper.Keys.authToken)
+            }
+            print("token set")
+        } catch {
+            // TODO: Error handling
+            print("error setting token: \(error.localizedDescription)")
         }
     }
 }

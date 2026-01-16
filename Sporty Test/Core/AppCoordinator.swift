@@ -10,7 +10,8 @@ final class AppCoordinator {
 
     init(window: UIWindow) {
         self.window = window
-        gitHubAPI = GitHubAPI(authorisationToken: nil)
+        let token = KeychainHelper.authToken?.isEmpty == false ? KeychainHelper.authToken! : nil
+        gitHubAPI = GitHubAPI(authorisationToken: token)
         mockLiveServer = MockLiveServer()
     }
 
