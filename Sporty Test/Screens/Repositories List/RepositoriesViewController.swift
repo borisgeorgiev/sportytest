@@ -29,6 +29,7 @@ final class RepositoriesViewController: UITableViewController {
     private let mockLiveServer: MockLiveServer
     private var repositories: [GitHubMinimalRepository] = []
     private var currentLoadingTask: Task<Void, Never>?
+    private var subscriptionsByRepoId: [Int: AnyCancellable] = [:]
     
     private var mode: RepositoryMode {
         get {
@@ -98,8 +99,16 @@ final class RepositoriesViewController: UITableViewController {
         cell.name = repository.name
         cell.descriptionText = repository.description
         cell.starCountText = repository.stargazersCount.formatted()
+        
+        startStarCountUpdates(for: cell, repository: repository)
 
         return cell
+    }
+    
+    override func tableView(_ tableView: UITableView, didEndDisplaying cell: UITableViewCell, forRowAt indexPath: IndexPath) {
+        if let repoId = (cell as? RepositoryTableViewCell)?.repoId {
+            cancelStarCountUpdates(for: repoId)
+        }
     }
 
     override func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
@@ -138,6 +147,11 @@ final class RepositoriesViewController: UITableViewController {
                 // TODO: Error handling and empty state (alert, empty data view)
                 print("Error loading repositories: \(error)")
                 repositories = []
+            }
+            
+            // Cancel all update subscriptions
+            for repoId in subscriptionsByRepoId.keys {
+                cancelStarCountUpdates(for: repoId)
             }
             
             // TODO: hide loading indicator
@@ -232,5 +246,34 @@ final class RepositoriesViewController: UITableViewController {
     private func updateMode(_ mode: RepositoryMode) {
         self.mode = mode
         refreshRepositories()
+    }
+    
+    private func startStarCountUpdates(for cell: RepositoryTableViewCell, repository: GitHubMinimalRepository) {
+        cell.repoId = repository.id // So we can check & update the value once it is delivered
+        
+        subscriptionsByRepoId[repository.id]?.cancel()
+        subscriptionsByRepoId[repository.id] = nil
+        
+        // Start/replace a live subscription for star updates for this repo
+        Task { @MainActor [weak cell] in
+            if let cancellable = try? await mockLiveServer.subscribeToRepo(
+                repoId: repository.id,
+                currentStars: repository.stargazersCount,
+                subscriber: { [weak cell] newStars in
+                    Task { @MainActor [weak cell] in
+                        // Check if cell has been reused
+                        if cell?.repoId == repository.id {
+                            cell?.starCountText = newStars.formatted()
+                        }
+                    }
+                }) {
+                subscriptionsByRepoId[repository.id] = cancellable
+            }
+        }
+    }
+    
+    private func cancelStarCountUpdates(for repoId: Int) {
+        subscriptionsByRepoId[repoId]?.cancel()
+        subscriptionsByRepoId[repoId] = nil
     }
 }
